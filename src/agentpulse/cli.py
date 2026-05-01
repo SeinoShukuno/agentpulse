@@ -3,7 +3,7 @@ import click
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="agentpulse")
+@click.version_option(version="0.1.0", prog_name="ap")
 def main():
     """🩺 AgentPulse — 一条命令搞定多模型管理 + 自动切换。"""
     pass
@@ -22,10 +22,3 @@ def status():
     """查看当前模型状态。"""
     from .status import run_status
     run_status()
-
-
-@main.command()
-def test():
-    """测试所有已配置模型。"""
-    from .status import run_test
-    run_test()
