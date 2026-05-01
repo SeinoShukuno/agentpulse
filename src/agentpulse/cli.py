@@ -10,10 +10,11 @@ def main():
 
 
 @main.command()
-def setup():
+@click.option("--dry-run", is_flag=True, help="预览模式，不写入任何配置。")
+def setup(dry_run):
     """交互式配置多模型自动切换。"""
     from .setup_wizard import run_setup
-    run_setup()
+    run_setup(dry_run=dry_run)
 
 
 @main.command()
