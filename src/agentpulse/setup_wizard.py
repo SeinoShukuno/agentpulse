@@ -77,8 +77,11 @@ def _fuzzy_match(user_input: str, candidates: list[str]) -> str | None:
 # 自动发现模型（调用 /v1/models）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def _discover_models(base_url: str, api_key: str, timeout: float = 10.0) -> list[str]:
-    """通过 /v1/models 端点自动发现可用模型。"""
+def _discover_models(base_url: str, api_key: str, timeout: float = 10.0) -> tuple[list[str], str | None]:
+    """通过 /v1/models 端点自动发现可用模型。
+
+    返回 (模型列表, 错误信息)。成功时错误为 None。
+    """
     url = f"{base_url.rstrip('/')}/models"
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -89,10 +92,22 @@ def _discover_models(base_url: str, api_key: str, timeout: float = 10.0) -> list
         if resp.status_code == 200:
             data = resp.json()
             models = data.get("data", [])
-            return [m["id"] for m in models if "id" in m]
-    except Exception:
-        pass
-    return []
+            ids = [m["id"] for m in models if "id" in m]
+            if ids:
+                return ids, None
+            return [], "API 返回了空的模型列表"
+        elif resp.status_code == 401:
+            return [], "认证失败 (401) — 请检查 API Key"
+        elif resp.status_code == 404:
+            return [], "该提供商不支持 /v1/models 自动发现"
+        else:
+            return [], f"HTTP {resp.status_code}"
+    except httpx.ConnectError:
+        return [], "连接失败 — 请检查 URL"
+    except httpx.TimeoutException:
+        return [], "超时 — 请检查网络"
+    except Exception as e:
+        return [], str(e)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -288,9 +303,12 @@ def _configure_provider(provider: ProviderInfo) -> list[dict]:
     discovered = []
     if provider.models_auto_discover:
         console.print("  查询可用模型...")
-        discovered = _discover_models(base_url, api_key)
+        discovered, discover_err = _discover_models(base_url, api_key)
         if discovered:
             console.print(f"  [dim]自动发现 {len(discovered)} 个模型[/dim]")
+        elif discover_err:
+            console.print(f"  [yellow]自动发现失败: {discover_err}[/yellow]")
+            console.print("  [dim]将使用预设模型列表[/dim]")
 
     # 选择模型
     selected_models = _pick_models(provider, base_url, api_key, discovered)
@@ -328,10 +346,12 @@ def _configure_custom() -> list[dict]:
 
     # 先尝试自动发现
     console.print("  查询可用模型...")
-    discovered = _discover_models(base_url, api_key)
+    discovered, discover_err = _discover_models(base_url, api_key)
     if discovered:
         console.print(f"  [dim]自动发现 {len(discovered)} 个模型[/dim]")
         console.print(f"  模型列表: [dim]{', '.join(discovered[:10])}{'...' if len(discovered) > 10 else ''}[/dim]")
+    elif discover_err:
+        console.print(f"  [yellow]自动发现失败: {discover_err}[/yellow]")
 
     if discovered:
         use_discovered = Confirm.ask("  使用自动发现的模型？", default=True)
